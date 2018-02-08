@@ -1,4 +1,4 @@
-﻿using Microsoft.Crm.Sdk.Messages;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using Microsoft.Xrm.Sdk.Workflow;
@@ -28,6 +28,11 @@ namespace Extending.Dyn365.v9.CustomWorkflowActivity
         [Input("Greeting email text")]
         public InArgument<string> greetingEmailtext { get; set; }
 
+        [RequiredArgument]
+        [Default("false")]
+        [Input("Send greeting email after creation?")]
+        public InArgument<bool> sendGreetingEmailIndication { get; set; }
+
         #endregion 
 
         protected override void Execute(CodeActivityContext context)
@@ -35,6 +40,8 @@ namespace Extending.Dyn365.v9.CustomWorkflowActivity
             //extract input parameters 
             string greetingTitle = this.greetingEmailTitle.Get(context);
             string greetingText = this.greetingEmailtext.Get(context);
+            bool sendIndication = this.sendGreetingEmailIndication.Get(context);
+
 
             //initiate organization service proxy
             IWorkflowContext workflowcontext = context.GetExtension<IWorkflowContext>();
@@ -43,12 +50,13 @@ namespace Extending.Dyn365.v9.CustomWorkflowActivity
 
             //initiate tracing service
             tracingService = context.GetExtension<ITracingService>();
-          
+
             tracingService.Trace("Execution start");
 
             EntityCollection birthdayContacts = RetrieveBirthdayContacts(service);
 
-            AttachEmailActivity(birthdayContacts, workflowcontext.InitiatingUserId, greetingTitle, greetingText, service);
+            HandleEmailActivity(birthdayContacts, workflowcontext.InitiatingUserId, greetingTitle, greetingText, 
+                sendIndication, service);
 
             tracingService.Trace("Execution end");
         }
@@ -97,16 +105,16 @@ namespace Extending.Dyn365.v9.CustomWorkflowActivity
             return result;
         }
 
-        
+
         /// <summary>
         /// Attach and send email activity 
         /// </summary>
         /// <param name="contacts"></param>
-        private void AttachEmailActivity(
-            EntityCollection contacts, Guid currentUserId, string greetingTitle, string greetingText, 
+        private void HandleEmailActivity(
+            EntityCollection contacts, Guid currentUserId, string greetingTitle, string greetingText, bool sendIndication,
             IOrganizationService service)
         {
-            foreach(Entity contact in contacts.Entities)
+            foreach (Entity contact in contacts.Entities)
             {
                 //define email activity 
                 // define the 'from:' activity party for the email
@@ -129,20 +137,22 @@ namespace Extending.Dyn365.v9.CustomWorkflowActivity
                 email["regardingobjectid"] = toMember;
 
                 //create email record 
-                Guid emailId =  service.Create(email);
+                Guid emailId = service.Create(email);
 
-                // define SendEmail request.
-                SendEmailRequest sendEmailreq = new SendEmailRequest
+                if (sendIndication == true)
                 {
-                    EmailId = emailId,
-                    TrackingToken = "",
-                    IssueSend = true
-                };
-           
-                //send email 
-                SendEmailResponse sendEmailresponse = (SendEmailResponse)service.Execute(sendEmailreq);
+                    // define SendEmail request.
+                    SendEmailRequest sendEmailreq = new SendEmailRequest
+                    {
+                        EmailId = emailId,
+                        TrackingToken = "",
+                        IssueSend = true
+                    };
+
+                    //send email 
+                    SendEmailResponse sendEmailresponse = (SendEmailResponse)service.Execute(sendEmailreq);
+                }
             }
         }
     }
 }
-
